@@ -21,8 +21,11 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
+from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Response, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
 from .agents.characters import build_characters
 from .agents.game_master import build_game_master
@@ -33,6 +36,9 @@ from .safety import sanitize_learner_input
 from .tools.lore import build_lore_tools
 from .tools.state import begin_session, end_session
 from .turn import OPENING, build_turn
+
+# The single-page web client (styled visual frontend; the CLI remains the guaranteed fallback).
+FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
 # Demo-grade abuse guards on the public /play socket (H-03). Auth and production-grade,
 # shared rate limiting are still needed before public deployment (tracked as GRC/H follow-ups).
@@ -51,6 +57,25 @@ app = FastAPI(title="Curriculum Quest")
 @app.on_event("startup")
 async def _startup() -> None:
     configure_logging()  # structured turn log → state/logs/turns.jsonl
+
+
+@app.get("/", response_class=HTMLResponse)
+async def index() -> HTMLResponse:
+    """Serve the single-page web client."""
+    return HTMLResponse((FRONTEND_DIR / "index.html").read_text(encoding="utf-8"))
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    ico = FRONTEND_DIR / "assets" / "favicon.svg"
+    return FileResponse(ico) if ico.exists() else Response(status_code=204)
+
+
+# Drop-in art slots: if /frontend/assets/portraits/<key>.png or /scenes/<key>.png exist they are
+# served here and the client uses them; otherwise the client falls back to its built-in SVG art.
+# (The dir always exists so the mount is valid even before any PNG is added.)
+(FRONTEND_DIR / "assets").mkdir(parents=True, exist_ok=True)
+app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIR / "assets")), name="assets")
 
 
 @app.get("/health")
