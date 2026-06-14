@@ -38,6 +38,7 @@ from .turn import OPENING, build_turn
 TURN_TIMEOUT_S = 120.0  # max wall-clock per turn before a graceful error turn
 MAX_TURNS = 100  # per-connection message budget before a polite close
 MIN_TURN_INTERVAL_S = 0.5  # minimum spacing between learner messages
+TURN_ATTEMPTS = 3  # silent retries for a turn before sending a graceful "try again" turn
 
 app = FastAPI(title="Curriculum Quest")
 
@@ -55,23 +56,35 @@ async def health() -> dict:
 async def _stream_turn(ws: WebSocket, gm, message, thread) -> None:
     """Stream one turn to the client: a 'thinking' ack, incremental deltas, then the final Turn."""
     await ws.send_json({"type": "status", "status": "thinking"})
-    parts: list[str] = []
-    try:
-        async for update in gm.run_stream(message, thread=thread):
-            chunk = getattr(update, "text", "") or ""
-            if chunk:
-                parts.append(chunk)
-                await ws.send_json({"type": "delta", "text": chunk})
-    except Exception:  # noqa: BLE001 — transient/preview-SDK turn failures must degrade, not crash
-        pass
-    full = "".join(parts)
-    if not full:  # nothing streamed — fall back to one non-streamed call, then a kind message
+    shown: list[str] = []
+    # Retry transient failures silently while no delta has been sent — the client only sees the
+    # 'thinking' ack until real output. First attempt streams; retries use the non-streamed call.
+    for attempt in range(TURN_ATTEMPTS):
         try:
+            if attempt == 0:  # stream for live deltas
+                got: list[str] = []
+                async for update in gm.run_stream(message, thread=thread):
+                    chunk = getattr(update, "text", "") or ""
+                    if chunk:
+                        got.append(chunk)
+                        shown.append(chunk)
+                        await ws.send_json({"type": "delta", "text": chunk})
+                if got:
+                    await ws.send_json({"type": "turn", **build_turn("".join(got))})
+                    return
+            # retry path (or an empty first stream): one non-streamed call
             result = await gm.run(message, thread=thread)
-            full = getattr(result, "text", None) or str(result)
-        except Exception:  # noqa: BLE001
-            full = "The story stumbled for a moment — please try that again."
-    await ws.send_json({"type": "turn", **build_turn(full)})
+            text = getattr(result, "text", None) or str(result)
+            if text:
+                await ws.send_json({"type": "turn", **build_turn(text)})
+                return
+        except Exception:  # noqa: BLE001 — transient/preview-SDK turn failures must degrade, not crash
+            if shown:  # partial deltas already sent — finalize with what we have
+                await ws.send_json({"type": "turn", **build_turn("".join(shown))})
+                return
+            await asyncio.sleep(0.6 * (attempt + 1))  # brief backoff, then retry
+    await ws.send_json(
+        {"type": "turn", **build_turn("The story stumbled for a moment — please try that again.")})
 
 
 async def _close(client) -> None:

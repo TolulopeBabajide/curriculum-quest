@@ -23,6 +23,8 @@ from .turn import OPENING
 warnings.filterwarnings("ignore")
 logging.getLogger("agent_framework").setLevel(logging.CRITICAL)
 
+_TURN_ATTEMPTS = 3  # silent retries for a turn before showing a graceful "try again" message
+
 BANNER = r"""
    ____                _           _                   ___                 _
   / ___|   _ _ __ _ __(_) ___ _   _| |_   _ _ __ ___    / _ \ _   _  ___  __| |_
@@ -40,28 +42,44 @@ async def _say(agent, message, thread) -> str:
     few seconds). Returns the full text once complete.
     """
     print("Loreweaver is thinking…", end="", flush=True)
-    parts: list[str] = []
-    try:
-        async for update in agent.run_stream(message, thread=thread):
-            chunk = getattr(update, "text", "") or ""
-            if not chunk:
-                continue
-            if not parts:  # first real token — clear the cue and start the reply
-                print("\r\033[KLoreweaver:\n", end="", flush=True)
-            print(chunk, end="", flush=True)
-            parts.append(chunk)
-    except Exception:  # noqa: BLE001 — transient/preview-SDK turn failures must degrade, not crash
-        pass
-    if not parts:  # nothing streamed — fall back to one non-streamed call, then a kind message
+    shown: list[str] = []
+
+    def emit(text: str) -> None:
+        if not shown:  # first output — clear the cue, start the reply
+            print("\r\033[KLoreweaver:\n", end="", flush=True)
+        print(text, end="", flush=True)
+        shown.append(text)
+
+    # Retry transient turn failures silently while nothing has been displayed yet, so the player
+    # only ever sees the "thinking…" cue. First attempt streams (live UX); retries use the
+    # non-streamed call, which is more reliable here. Degrade gracefully only if all attempts fail.
+    for attempt in range(_TURN_ATTEMPTS):
         try:
+            if attempt == 0:  # stream for a live, token-by-token reply
+                got: list[str] = []
+                async for update in agent.run_stream(message, thread=thread):
+                    chunk = getattr(update, "text", "") or ""
+                    if chunk:
+                        emit(chunk)
+                        got.append(chunk)
+                if got:
+                    print("\n")
+                    return "".join(got)
+            # retry path (or an empty first stream): one non-streamed call
             result = await agent.run(message, thread=thread)
             text = getattr(result, "text", None) or str(result)
-        except Exception:  # noqa: BLE001
-            text = "(The story stumbled for a moment — please try that again.)"
-        print("\r\033[KLoreweaver:\n" + text, end="", flush=True)
-        parts.append(text)
+            if text:
+                emit(text)
+                print("\n")
+                return text
+        except Exception:  # noqa: BLE001 — transient/preview-SDK turn failures must degrade, not crash
+            if shown:  # partial already on screen — finalize, don't retry/duplicate
+                print("\n")
+                return "".join(shown)
+            await asyncio.sleep(0.6 * (attempt + 1))  # brief, invisible backoff, then retry
+    emit("(The story stumbled for a moment — please try that again.)")
     print("\n")
-    return "".join(parts)
+    return "".join(shown)
 
 
 async def main() -> None:
