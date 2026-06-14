@@ -40,6 +40,7 @@ _DEFAULT = {
     "learner_name": "",
     "confidence": 3,
     "current_place": "Home & compound",
+    "lesson_index": 0,         # position in the ordered curriculum path (see game_master CURRICULUM_PATH)
     "skills": [],
     "places_helped": [],
     "world_flags": {},
@@ -200,6 +201,16 @@ def mark_place_helped(place: str) -> str:
     return json.dumps(state)
 
 
+@ai_function
+def advance_lesson() -> str:
+    """Move to the NEXT lesson in the curriculum path. Call this only after the current lesson's
+    teach -> challenge -> verify is complete. Returns updated state JSON (with the new lesson_index)."""
+    state = _load()
+    state["lesson_index"] = int(state.get("lesson_index", 0)) + 1
+    _save(state)
+    return json.dumps(state)
+
+
 STATE_TOOLS = [
     get_campaign_state,
     set_learner_context,
@@ -207,4 +218,5 @@ STATE_TOOLS = [
     adjust_confidence,
     set_flag,
     mark_place_helped,
+    advance_lesson,
 ]

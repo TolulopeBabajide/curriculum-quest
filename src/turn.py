@@ -69,8 +69,10 @@ OPENING = (
     "Begin the story. Do the friendly first-turn onboarding: greet the learner warmly, tell them "
     "Teacher Adaeze, the neighbours, and Tunde are AI characters, then ask their name and a little "
     "about their real surroundings (village/town/city; what their family uses to cook and for light; "
-    "whether a market, farm, or stream is nearby). Save it with set_learner_context, then open the "
-    "morning at their home & compound and offer their first choices."
+    "whether a market, farm, or stream is nearby). Save it with set_learner_context. Then briefly "
+    "introduce today's learning journey — name the science topics they'll explore in order, following "
+    "the curriculum — and begin LESSON 1 at their home & compound. You guide the path in order; do NOT "
+    "ask the learner to pick a scene."
 )
 
 _CITATION_RE = re.compile(r"\(Source:\s*([^)]+)\)", re.IGNORECASE)
@@ -112,6 +114,7 @@ def _state_snapshot() -> dict:
         "learner_name": s.get("learner_name", ""),
         "confidence": s.get("confidence", 0),
         "location": s.get("current_place", ""),
+        "lesson_index": s.get("lesson_index", 0),
         "skills": s.get("skills", []),
         "places_helped": s.get("places_helped", []),
         "learner_context": s.get("learner_context", {}),
