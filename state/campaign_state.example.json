@@ -1,0 +1,15 @@
+{
+  "learner_name": "",
+  "confidence": 3,
+  "current_place": "Home & compound",
+  "skills": [],
+  "places_helped": [],
+  "world_flags": {},
+  "learner_context": {
+    "home_type": "",
+    "cooking_energy": "",
+    "lighting_energy": "",
+    "nearby_features": [],
+    "notes": ""
+  }
+}

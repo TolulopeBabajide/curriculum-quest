@@ -1,0 +1,32 @@
+.venv/
+.env
+.env.local
+__pycache__/
+*.pyc
+*.pyo
+state/campaign_state.json
+.DS_Store
+
+# Secrets
+*.key
+*.pem
+*.p12
+
+# ── Private / local-only — never push to the public repo ──
+# Planning & internal docs
+/BACKLOG.md
+/BUILD-PLAN.md
+/HANDOFF.md
+/SUBMISSION.md
+# Internal config
+/CLAUDE.md
+/project-config.md
+/agent-permissions.json
+# Agent-ops docs + agent team harness
+/docs/
+/.claude/
+/.agent-health/
+# Harness scripts — keep only the project's own scripts public
+/scripts/*
+!/scripts/seed_foundry_iq.py
+!/scripts/create_foundry_iq_kbs.py

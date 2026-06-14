@@ -1,0 +1,27 @@
+# Microsoft Agent Framework (preview) — multi-agent orchestration + MCP tools
+# PINNED to the b251211 window: this is the API surface the code targets
+# (top-level ChatAgent + chat_client= kwarg, AzureAIAgentClient in agent_framework.azure,
+# MCPStreamableHTTPTool(headers=)). Newer releases (>=b260212 / 1.x) renamed ChatAgent->Agent,
+# moved the Foundry client to agent_framework_foundry, and dropped MCP headers=. Do not bump
+# without migrating src/{clients,agents/*,tools/lore}.py.
+agent-framework-core==1.0.0b251211
+agent-framework-azure-ai==1.0.0b251211
+# Transitive pin: b251211's azure-ai client imports PromptAgentDefinitionText from azure-ai-projects;
+# >=2.1 renamed that symbol and breaks the import. Keep this floor.
+azure-ai-projects==2.0.0b2
+
+# Azure auth + Foundry project client
+azure-identity
+
+# Foundry IQ seeding (Azure AI Search agentic retrieval — preview pin per iq-series cookbook)
+azure-search-documents==12.1.0b1
+
+# OpenAI SDK — used by scripts/seed_foundry_iq.py to embed chunks (AzureOpenAI client)
+openai
+
+# Backend service for visual frontends (structured-turn API over HTTP/WebSocket)
+fastapi
+uvicorn[standard]
+
+# Env + utilities
+python-dotenv
