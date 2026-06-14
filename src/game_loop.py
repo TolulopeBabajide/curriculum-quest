@@ -7,6 +7,8 @@ If Foundry IQ isn't ready, set USE_LOCAL_FALLBACK=true in .env to play with loca
 from __future__ import annotations
 
 import asyncio
+import logging
+import warnings
 
 from .agents.characters import build_characters
 from .agents.game_master import build_game_master
@@ -15,6 +17,11 @@ from .config import settings
 from .safety import sanitize_learner_input
 from .tools.lore import build_lore_tools
 from .turn import OPENING
+
+# Keep the player's console clean: preview-SDK experimental warnings are noise, and transient
+# per-turn stream errors are caught and recovered in `_say`, so the SDK's error logs needn't surface.
+warnings.filterwarnings("ignore")
+logging.getLogger("agent_framework").setLevel(logging.CRITICAL)
 
 BANNER = r"""
    ____                _           _                   ___                 _
@@ -34,17 +41,23 @@ async def _say(agent, message, thread) -> str:
     """
     print("Loreweaver is thinking…", end="", flush=True)
     parts: list[str] = []
-    async for update in agent.run_stream(message, thread=thread):
-        chunk = getattr(update, "text", "") or ""
-        if not chunk:
-            continue
-        if not parts:  # first real token — clear the cue and start the reply
-            print("\r\033[KLoreweaver:\n", end="", flush=True)
-        print(chunk, end="", flush=True)
-        parts.append(chunk)
-    if not parts:  # nothing streamed (rare) — fall back to a single non-streamed call
-        result = await agent.run(message, thread=thread)
-        text = getattr(result, "text", None) or str(result)
+    try:
+        async for update in agent.run_stream(message, thread=thread):
+            chunk = getattr(update, "text", "") or ""
+            if not chunk:
+                continue
+            if not parts:  # first real token — clear the cue and start the reply
+                print("\r\033[KLoreweaver:\n", end="", flush=True)
+            print(chunk, end="", flush=True)
+            parts.append(chunk)
+    except Exception:  # noqa: BLE001 — transient/preview-SDK turn failures must degrade, not crash
+        pass
+    if not parts:  # nothing streamed — fall back to one non-streamed call, then a kind message
+        try:
+            result = await agent.run(message, thread=thread)
+            text = getattr(result, "text", None) or str(result)
+        except Exception:  # noqa: BLE001
+            text = "(The story stumbled for a moment — please try that again.)"
         print("\r\033[KLoreweaver:\n" + text, end="", flush=True)
         parts.append(text)
     print("\n")

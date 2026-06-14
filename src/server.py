@@ -56,15 +56,21 @@ async def _stream_turn(ws: WebSocket, gm, message, thread) -> None:
     """Stream one turn to the client: a 'thinking' ack, incremental deltas, then the final Turn."""
     await ws.send_json({"type": "status", "status": "thinking"})
     parts: list[str] = []
-    async for update in gm.run_stream(message, thread=thread):
-        chunk = getattr(update, "text", "") or ""
-        if chunk:
-            parts.append(chunk)
-            await ws.send_json({"type": "delta", "text": chunk})
+    try:
+        async for update in gm.run_stream(message, thread=thread):
+            chunk = getattr(update, "text", "") or ""
+            if chunk:
+                parts.append(chunk)
+                await ws.send_json({"type": "delta", "text": chunk})
+    except Exception:  # noqa: BLE001 — transient/preview-SDK turn failures must degrade, not crash
+        pass
     full = "".join(parts)
-    if not full:  # nothing streamed (rare) — fall back to a single non-streamed call
-        result = await gm.run(message, thread=thread)
-        full = getattr(result, "text", None) or str(result)
+    if not full:  # nothing streamed — fall back to one non-streamed call, then a kind message
+        try:
+            result = await gm.run(message, thread=thread)
+            full = getattr(result, "text", None) or str(result)
+        except Exception:  # noqa: BLE001
+            full = "The story stumbled for a moment — please try that again."
     await ws.send_json({"type": "turn", **build_turn(full)})
 
 
