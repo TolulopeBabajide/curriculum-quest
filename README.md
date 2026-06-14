@@ -59,10 +59,12 @@ campaign state). Swappable to any of the 48 NERDC subject/grade files — see `s
 ## 📊 Data & Responsible AI
 
 - **The community frame is 100% original synthetic data** — Oke-Ola, its places, and its people in `worldpack/` are invented for this project (a *representative* Nigerian community, not a real town).
-- **Learner personalization uses only what the learner volunteers about their own surroundings** at runtime (home type, cooking/lighting source, nearby market/farm/stream). It is stored locally in `state/` and never committed; no names, addresses, or PII are required.
+- **Learner personalization uses only what the learner volunteers** at runtime — a first name and a few details about their surroundings (home type, cooking/lighting source, nearby market/farm/stream). **Providing a name is optional**; the game plays fine without one, and no address or other identifier is requested.
+- **Where that data goes (be clear-eyed):** like any LLM application, the learner's messages and the details they share are **sent to Azure OpenAI (`gpt-5-mini`) on each turn** to generate the characters' responses — so this input *does leave the device* and is processed by a third party (Microsoft Azure) under its terms. It is **stored only locally** (gitignored `state/`; per-session files are deleted on disconnect), **never committed** to this repo, and not written to application logs.
 - **Curriculum content is public NERDC educational material** (not PII, not customer data, not proprietary) used as the grounded knowledge source, with **citations back to curriculum objectives**.
-- No real student data, no PII, no credentials anywhere in this repo.
+- No student data, PII, or credentials are committed anywhere in this repo.
 - Learners are told they are interacting with AI. Answers are checked against cited sources before progress is granted (human-in-the-loop: the learner *is* the human).
+- **For real classroom/child use** (beyond this demo): verifiable parental/teacher consent (COPPA-school path; Nigeria NDPA guardian consent), input minimization, and a data-retention statement would be required first — tracked in the backlog (GRC-04/05/06).
 
 ---
 
