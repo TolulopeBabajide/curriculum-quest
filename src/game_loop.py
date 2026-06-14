@@ -12,7 +12,7 @@ from .agents.characters import build_characters
 from .agents.game_master import build_game_master
 from .clients import get_chat_client
 from .config import settings
-from .safety import wrap_learner_input
+from .safety import sanitize_learner_input
 from .tools.lore import build_lore_tools
 from .turn import OPENING
 
@@ -25,10 +25,30 @@ BANNER = r"""
    Learn JSS1 Basic Science through everyday life in the community of Oke-Ola.
 """
 
-async def _say(agent, message, thread):
-    """Run one turn and return the agent's text, handling preview-SDK return shapes."""
-    result = await agent.run(message, thread=thread)
-    return getattr(result, "text", None) or str(result)
+async def _say(agent, message, thread) -> str:
+    """Stream one turn to the console: show a 'thinking' cue, then print tokens as they arrive.
+
+    Streaming is the key UX signal — it tells the learner their input was accepted and a reply is
+    being built (a turn orchestrates several agent + retrieval calls, so the first token can take a
+    few seconds). Returns the full text once complete.
+    """
+    print("Loreweaver is thinking…", end="", flush=True)
+    parts: list[str] = []
+    async for update in agent.run_stream(message, thread=thread):
+        chunk = getattr(update, "text", "") or ""
+        if not chunk:
+            continue
+        if not parts:  # first real token — clear the cue and start the reply
+            print("\r\033[KLoreweaver:\n", end="", flush=True)
+        print(chunk, end="", flush=True)
+        parts.append(chunk)
+    if not parts:  # nothing streamed (rare) — fall back to a single non-streamed call
+        result = await agent.run(message, thread=thread)
+        text = getattr(result, "text", None) or str(result)
+        print("\r\033[KLoreweaver:\n" + text, end="", flush=True)
+        parts.append(text)
+    print("\n")
+    return "".join(parts)
 
 
 async def main() -> None:
@@ -45,8 +65,8 @@ async def main() -> None:
         # A thread gives the Game Master memory across turns.
         thread = gm.get_new_thread() if hasattr(gm, "get_new_thread") else None
 
-        # Opening scene.
-        print("Loreweaver:\n" + await _say(gm, OPENING, thread) + "\n")
+        # Opening scene (OPENING is trusted system text — not sanitized).
+        await _say(gm, OPENING, thread)
 
         while True:
             try:
@@ -59,10 +79,9 @@ async def main() -> None:
             if user.lower() in {"quit", "exit"}:
                 print("The Lumen dims for now. Farewell, Lumen-Bearer.")
                 break
-            # Wrap untrusted learner text as data, never instructions (H-02). OPENING above
-            # is trusted system text and is sent unwrapped.
-            reply = await _say(gm, wrap_learner_input(user), thread)
-            print("\nLoreweaver:\n" + reply + "\n")
+            # Sanitize untrusted learner text server-side (invisible — no markers); the agents'
+            # guardrails + the user/system role boundary handle injection (H-02).
+            await _say(gm, sanitize_learner_input(user), thread)
 
 
 if __name__ == "__main__":

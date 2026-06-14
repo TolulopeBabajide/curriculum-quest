@@ -6,8 +6,12 @@ so a 2D visual novel or a 3D world can render it.
 
 Endpoints:
   GET  /health        — readiness + which grounding path is active.
-  WS   /play          — one play session. The server sends the opening Turn on connect, then a
-                        Turn for each text message the client sends. Send "quit" to end.
+  WS   /play          — one play session. For the opening and each learner message, the server
+                        streams JSON frames tagged by `type`:
+                          {"type":"status","status":"thinking"}      — ack: input accepted, working
+                          {"type":"delta","text":"…"}                 — incremental narration tokens
+                          {"type":"turn", ...Turn}                    — final structured turn (turn.py)
+                        Send "quit" to end. Learner text is sanitized server-side before the model.
 
 Run:  uvicorn src.server:app --reload --port 8000
 (single-player demo: campaign state is one shared file and is reset at the start of each session)
@@ -24,7 +28,7 @@ from .agents.characters import build_characters
 from .agents.game_master import build_game_master
 from .clients import get_chat_client
 from .config import settings
-from .safety import wrap_learner_input
+from .safety import sanitize_learner_input
 from .tools.lore import build_lore_tools
 from .tools.state import begin_session, end_session
 from .turn import OPENING, build_turn
@@ -48,9 +52,20 @@ async def health() -> dict:
     }
 
 
-async def _run(gm, message, thread) -> str:
-    result = await gm.run(message, thread=thread)
-    return getattr(result, "text", None) or str(result)
+async def _stream_turn(ws: WebSocket, gm, message, thread) -> None:
+    """Stream one turn to the client: a 'thinking' ack, incremental deltas, then the final Turn."""
+    await ws.send_json({"type": "status", "status": "thinking"})
+    parts: list[str] = []
+    async for update in gm.run_stream(message, thread=thread):
+        chunk = getattr(update, "text", "") or ""
+        if chunk:
+            parts.append(chunk)
+            await ws.send_json({"type": "delta", "text": chunk})
+    full = "".join(parts)
+    if not full:  # nothing streamed (rare) — fall back to a single non-streamed call
+        result = await gm.run(message, thread=thread)
+        full = getattr(result, "text", None) or str(result)
+    await ws.send_json({"type": "turn", **build_turn(full)})
 
 
 async def _close(client) -> None:
@@ -81,16 +96,19 @@ async def play(ws: WebSocket) -> None:
 
     turns = 0
     last_turn_at = 0.0
+    def _bye(text: str) -> dict:
+        return {"type": "turn", "speaker": "Storyteller", "text": text,
+                "citations": [], "choices": [], "state": {}}
+
     try:
-        # OPENING is trusted system text — sent unwrapped, not subject to the per-turn budget.
-        await ws.send_json(build_turn(await _run(gm, OPENING, thread)))
+        # OPENING is trusted system text — streamed unwrapped, not subject to the per-turn budget.
+        await _stream_turn(ws, gm, OPENING, thread)
         while True:
             user = (await ws.receive_text()).strip()
             if not user:
                 continue
             if user.lower() in {"quit", "exit"}:
-                await ws.send_json({"speaker": "Storyteller", "text": "Farewell for now.",
-                                    "citations": [], "choices": [], "state": {}})
+                await ws.send_json(_bye("Farewell for now."))
                 break
             # Rate limit: ignore messages arriving faster than the minimum interval.
             now = time.monotonic()
@@ -100,20 +118,17 @@ async def play(ws: WebSocket) -> None:
             # Message budget: close politely once the per-connection cap is reached.
             turns += 1
             if turns > MAX_TURNS:
-                await ws.send_json({"speaker": "Storyteller",
-                                    "text": "We've played a lot today — let's rest. Farewell for now.",
-                                    "citations": [], "choices": [], "state": {}})
+                await ws.send_json(_bye("We've played a lot today — let's rest. Farewell for now."))
                 break
-            # Per-turn timeout: send a graceful error turn instead of crashing on a slow/looping turn.
+            # Sanitize untrusted learner text server-side (invisible — no markers); stream the turn
+            # under a per-turn timeout so a slow/looping turn degrades gracefully instead of crashing.
             try:
-                reply = await asyncio.wait_for(
-                    _run(gm, wrap_learner_input(user), thread), timeout=TURN_TIMEOUT_S)
+                await asyncio.wait_for(
+                    _stream_turn(ws, gm, sanitize_learner_input(user), thread),
+                    timeout=TURN_TIMEOUT_S)
             except asyncio.TimeoutError:
-                await ws.send_json({"speaker": "Storyteller",
-                                    "text": "That took too long — let's try that again.",
-                                    "citations": [], "choices": [], "state": {}})
+                await ws.send_json(_bye("That took too long — let's try that again."))
                 continue
-            await ws.send_json(build_turn(reply))
     except WebSocketDisconnect:
         pass
     finally:
