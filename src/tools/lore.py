@@ -41,13 +41,27 @@ def build_foundry_iq_tools():
     """
     import httpx
 
-    async def _retrieve(kb_name: str, query: str, source_label: str) -> str:
+    async def _retrieve(kb_name: str, ks_name: str, query: str, source_label: str) -> str:
         url = f"{settings.search_endpoint}/knowledgeBases/{kb_name}/retrieve?api-version={KB_MCP_API_VERSION}"
+        # includeReferenceSourceData surfaces the knowledge source's configured sourceDataFields
+        # (id/title/citation/source_file) in references[].sourceData. Without it, sourceData is null
+        # and we can only cite the doc title. See create_foundry_iq_kbs.py for the field config.
+        body = {
+            "messages": [{"role": "user", "content": [{"type": "text", "text": query}]}],
+            "knowledgeSourceParams": [
+                {
+                    "knowledgeSourceName": ks_name,
+                    "kind": "searchIndex",
+                    "includeReferences": True,
+                    "includeReferenceSourceData": True,
+                }
+            ],
+        }
         async with httpx.AsyncClient(timeout=60) as client:
             resp = await client.post(
                 url,
                 headers={"api-key": settings.search_query_key, "Content-Type": "application/json"},
-                json={"messages": [{"role": "user", "content": [{"type": "text", "text": query}]}]},
+                json=body,
             )
             resp.raise_for_status()
             data = resp.json()
@@ -57,11 +71,14 @@ def build_foundry_iq_tools():
             for c in m.get("content", [])
             if c.get("type") == "text"
         )
-        references = [
-            {"ref_id": ref.get("id"), "title": ref.get("title"),
-             "citation": f"{source_label} — {ref.get('title')}"}
-            for ref in data.get("references", [])
-        ]
+        references = []
+        for ref in data.get("references", []):
+            src = ref.get("sourceData") or {}
+            # Prefer the real stored citation; fall back to a title-based label if absent.
+            citation = src.get("citation") or f"{source_label} — {ref.get('title')}"
+            references.append(
+                {"ref_id": ref.get("id"), "title": ref.get("title"), "citation": citation}
+            )
         return json.dumps({"source": "foundry-iq", "answer": answer, "references": references})
 
     @ai_function
@@ -74,13 +91,18 @@ def build_foundry_iq_tools():
             JSON with a synthesized answer and the NERDC references to cite.
         """
         return await _retrieve(
-            settings.kb_curriculum, query, f"NERDC {settings.grade} {settings.subject}"
+            settings.kb_curriculum,
+            "jss1-basic-science-source",
+            query,
+            f"NERDC {settings.grade} {settings.subject}",
         )
 
     @ai_function
     async def world_lore(query: str) -> str:
         """Retrieve cited world/lore content from the Oke-Ola world pack via Foundry IQ."""
-        return await _retrieve(settings.kb_world, query, "Oke-Ola world pack")
+        return await _retrieve(
+            settings.kb_world, "lumenor-lore-source", query, "Oke-Ola world pack"
+        )
 
     return {"curriculum": curriculum_knowledge, "world": world_lore}
 
