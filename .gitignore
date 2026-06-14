@@ -32,3 +32,4 @@ state/logs/
 /scripts/*
 !/scripts/seed_foundry_iq.py
 !/scripts/create_foundry_iq_kbs.py
+!/scripts/gen_assets.py
