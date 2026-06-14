@@ -54,6 +54,16 @@ def test_metrics_counts_retry_and_failure():
     assert snap["latency_ms_p50"] > 0
 
 
+def test_metrics_counts_fresh_thread_recovery():
+    m = _Metrics()
+    m.record(attempts=3, ok=True, latency_ms=120.0, cause="azure_server_error_transient",
+             recovered_new_thread=True)
+    snap = m.snapshot()
+    assert snap["turns_ok"] == 1
+    assert snap["turns_retried"] == 1  # >1 attempt
+    assert snap["turns_recovered_new_thread"] == 1
+
+
 def test_turn_span_records_success_without_raising():
     with turn_span("test", input_len=42) as rec:
         rec.note_attempt()

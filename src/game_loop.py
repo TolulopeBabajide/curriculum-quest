@@ -25,7 +25,15 @@ from .turn import OPENING
 warnings.filterwarnings("ignore")
 logging.getLogger("agent_framework").setLevel(logging.CRITICAL)
 
-_TURN_ATTEMPTS = 3  # silent retries for a turn before showing a graceful "try again" message
+# Recovery strategy, informed by instrumented live runs (state/logs/turns.jsonl):
+# the failure is Azure's server-side server_error ("Sorry, something went wrong"), and it is NOT
+# recoverable client-side — same-thread retries fail identically (turns_retried stays 0) AND a
+# fresh-thread retry was observed to fail too (it's deterministic for the runtime's state under load,
+# not thread poisoning). So we keep retries minimal and cheap: stream once, one quick same-thread
+# retry for a genuinely transient blip, then a single fresh-thread last resort (cheap safety net, not
+# a reliable fix). The real lever is reducing per-turn orchestration load + Azure deployment capacity.
+_SAME_THREAD_ATTEMPTS = 2
+_BACKOFF_S = 0.3
 
 BANNER = r"""
    ____                _           _                   ___                 _
@@ -36,12 +44,20 @@ BANNER = r"""
    Learn JSS1 Basic Science through everyday life in the community of Oke-Ola.
 """
 
-async def _say(agent, message, thread) -> str:
+async def _say(agent, message, thread):
     """Stream one turn to the console: show a 'thinking' cue, then print tokens as they arrive.
 
     Streaming is the key UX signal — it tells the learner their input was accepted and a reply is
     being built (a turn orchestrates several agent + retrieval calls, so the first token can take a
-    few seconds). Returns the full text once complete.
+    few seconds).
+
+    Recovery: a couple of quick same-thread attempts, then one last attempt on a FRESH thread as a
+    cheap safety net (live runs show the Azure server_error is deterministic under load and a fresh
+    thread usually does NOT recover it either — see the module constants). If a fresh thread does
+    succeed it is adopted for the rest of the session (in-thread memory is lost, but campaign progress
+    is persisted in state and the Storyteller re-grounds via its state tools).
+
+    Returns ``(full_text, thread_to_use_next)`` — the caller must keep the returned thread.
     """
     print("Loreweaver is thinking…", end="", flush=True)
     shown: list[str] = []
@@ -52,43 +68,56 @@ async def _say(agent, message, thread) -> str:
         print(text, end="", flush=True)
         shown.append(text)
 
-    # Retry transient turn failures silently while nothing has been displayed yet, so the player
-    # only ever sees the "thinking…" cue. First attempt streams (live UX); retries use the
-    # non-streamed call, which is more reliable here. Degrade gracefully only if all attempts fail.
+    async def _run_once(thr, *, stream: bool) -> str | None:
+        """One attempt on the given thread. Streams (live UX) or uses the non-streamed call."""
+        if stream:
+            got: list[str] = []
+            async for update in agent.run_stream(message, thread=thr):
+                chunk = getattr(update, "text", "") or ""
+                if chunk:
+                    emit(chunk)
+                    got.append(chunk)
+            return "".join(got) or None
+        result = await agent.run(message, thread=thr)
+        text = getattr(result, "text", None) or str(result)
+        if text:
+            emit(text)
+        return text or None
+
     # Every turn — and the real cause of any failure — is logged via turn_span (state/logs/turns.jsonl).
     with turn_span("cli", input_len=len(message)) as rec:
-        for attempt in range(_TURN_ATTEMPTS):
+        # Phase 1: same thread (stream first for live UX, then one quick non-streamed retry).
+        for attempt in range(_SAME_THREAD_ATTEMPTS):
             rec.note_attempt()
             try:
-                if attempt == 0:  # stream for a live, token-by-token reply
-                    got: list[str] = []
-                    async for update in agent.run_stream(message, thread=thread):
-                        chunk = getattr(update, "text", "") or ""
-                        if chunk:
-                            emit(chunk)
-                            got.append(chunk)
-                    if got:
-                        print("\n")
-                        rec.ok = True
-                        return "".join(got)
-                # retry path (or an empty first stream): one non-streamed call
-                result = await agent.run(message, thread=thread)
-                text = getattr(result, "text", None) or str(result)
+                text = await _run_once(thread, stream=(attempt == 0))
                 if text:
-                    emit(text)
                     print("\n")
                     rec.ok = True
-                    return text
-            except Exception as exc:  # noqa: BLE001 — transient/preview-SDK turn failures degrade, not crash
+                    return text, thread
+            except Exception as exc:  # noqa: BLE001 — turn failures must degrade, not crash
                 rec.note_failure(exc)
                 if shown:  # partial already on screen — finalize, don't retry/duplicate
                     print("\n")
                     rec.ok = True
-                    return "".join(shown)
-                await asyncio.sleep(0.6 * (attempt + 1))  # brief, invisible backoff, then retry
+                    return "".join(shown), thread
+                await asyncio.sleep(_BACKOFF_S * (attempt + 1))  # brief, invisible backoff
+        # Phase 2: last resort on a FRESH thread (the same-thread run failure keeps reproducing).
+        if hasattr(agent, "get_new_thread") and not shown:
+            fresh = agent.get_new_thread()
+            rec.note_attempt()
+            try:
+                text = await _run_once(fresh, stream=False)
+                if text:
+                    print("\n")
+                    rec.ok = True
+                    rec.recovered_on_new_thread = True
+                    return text, fresh
+            except Exception as exc:  # noqa: BLE001
+                rec.note_failure(exc)
         emit("(The story stumbled for a moment — please try that again.)")
         print("\n")
-        return "".join(shown)
+        return "".join(shown), thread
 
 
 async def main() -> None:
@@ -107,7 +136,7 @@ async def main() -> None:
         thread = gm.get_new_thread() if hasattr(gm, "get_new_thread") else None
 
         # Opening scene (OPENING is trusted system text — not sanitized).
-        await _say(gm, OPENING, thread)
+        _, thread = await _say(gm, OPENING, thread)
 
         while True:
             try:
@@ -121,8 +150,9 @@ async def main() -> None:
                 print("The Lumen dims for now. Farewell, Lumen-Bearer.")
                 break
             # Sanitize untrusted learner text server-side (invisible — no markers); the agents'
-            # guardrails + the user/system role boundary handle injection (H-02).
-            await _say(gm, sanitize_learner_input(user), thread)
+            # guardrails + the user/system role boundary handle injection (H-02). Keep the returned
+            # thread — a fresh-thread recovery adopts a new thread for the rest of the session.
+            _, thread = await _say(gm, sanitize_learner_input(user), thread)
 
 
 if __name__ == "__main__":
