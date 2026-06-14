@@ -6,6 +6,7 @@ __pycache__/
 *.pyo
 state/campaign_state.json
 state/sessions/
+state/logs/
 .DS_Store
 
 # Secrets

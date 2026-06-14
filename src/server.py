@@ -28,6 +28,7 @@ from .agents.characters import build_characters
 from .agents.game_master import build_game_master
 from .clients import get_chat_client
 from .config import settings
+from .observability import configure_logging, metrics_snapshot, turn_span
 from .safety import sanitize_learner_input
 from .tools.lore import build_lore_tools
 from .tools.state import begin_session, end_session
@@ -43,6 +44,11 @@ TURN_ATTEMPTS = 3  # silent retries for a turn before sending a graceful "try ag
 app = FastAPI(title="Curriculum Quest")
 
 
+@app.on_event("startup")
+async def _startup() -> None:
+    configure_logging()  # structured turn log → state/logs/turns.jsonl
+
+
 @app.get("/health")
 async def health() -> dict:
     return {
@@ -53,38 +59,53 @@ async def health() -> dict:
     }
 
 
-async def _stream_turn(ws: WebSocket, gm, message, thread) -> None:
-    """Stream one turn to the client: a 'thinking' ack, incremental deltas, then the final Turn."""
+@app.get("/metrics")
+async def metrics() -> dict:
+    """Operational counters for monitoring: turn volume, retry/failure rates, latency, error causes."""
+    return metrics_snapshot()
+
+
+async def _stream_turn(ws: WebSocket, gm, message, thread, session_id: str | None = None) -> None:
+    """Stream one turn to the client: a 'thinking' ack, incremental deltas, then the final Turn.
+
+    Every turn — and the real cause of any failure — is logged via turn_span (state/logs/turns.jsonl).
+    """
     await ws.send_json({"type": "status", "status": "thinking"})
     shown: list[str] = []
     # Retry transient failures silently while no delta has been sent — the client only sees the
     # 'thinking' ack until real output. First attempt streams; retries use the non-streamed call.
-    for attempt in range(TURN_ATTEMPTS):
-        try:
-            if attempt == 0:  # stream for live deltas
-                got: list[str] = []
-                async for update in gm.run_stream(message, thread=thread):
-                    chunk = getattr(update, "text", "") or ""
-                    if chunk:
-                        got.append(chunk)
-                        shown.append(chunk)
-                        await ws.send_json({"type": "delta", "text": chunk})
-                if got:
-                    await ws.send_json({"type": "turn", **build_turn("".join(got))})
+    with turn_span("ws", session_id=session_id, input_len=len(message)) as rec:
+        for attempt in range(TURN_ATTEMPTS):
+            rec.note_attempt()
+            try:
+                if attempt == 0:  # stream for live deltas
+                    got: list[str] = []
+                    async for update in gm.run_stream(message, thread=thread):
+                        chunk = getattr(update, "text", "") or ""
+                        if chunk:
+                            got.append(chunk)
+                            shown.append(chunk)
+                            await ws.send_json({"type": "delta", "text": chunk})
+                    if got:
+                        await ws.send_json({"type": "turn", **build_turn("".join(got))})
+                        rec.ok = True
+                        return
+                # retry path (or an empty first stream): one non-streamed call
+                result = await gm.run(message, thread=thread)
+                text = getattr(result, "text", None) or str(result)
+                if text:
+                    await ws.send_json({"type": "turn", **build_turn(text)})
+                    rec.ok = True
                     return
-            # retry path (or an empty first stream): one non-streamed call
-            result = await gm.run(message, thread=thread)
-            text = getattr(result, "text", None) or str(result)
-            if text:
-                await ws.send_json({"type": "turn", **build_turn(text)})
-                return
-        except Exception:  # noqa: BLE001 — transient/preview-SDK turn failures must degrade, not crash
-            if shown:  # partial deltas already sent — finalize with what we have
-                await ws.send_json({"type": "turn", **build_turn("".join(shown))})
-                return
-            await asyncio.sleep(0.6 * (attempt + 1))  # brief backoff, then retry
-    await ws.send_json(
-        {"type": "turn", **build_turn("The story stumbled for a moment — please try that again.")})
+            except Exception as exc:  # noqa: BLE001 — transient/preview-SDK turn failures degrade, not crash
+                rec.note_failure(exc)
+                if shown:  # partial deltas already sent — finalize with what we have
+                    await ws.send_json({"type": "turn", **build_turn("".join(shown))})
+                    rec.ok = True
+                    return
+                await asyncio.sleep(0.6 * (attempt + 1))  # brief backoff, then retry
+        await ws.send_json(
+            {"type": "turn", **build_turn("The story stumbled for a moment — please try that again.")})
 
 
 async def _close(client) -> None:
@@ -105,7 +126,8 @@ async def play(ws: WebSocket) -> None:
     await ws.accept()
     # Private per-connection state file (isolated via a context var) so concurrent sessions
     # don't clobber each other.
-    token = begin_session(uuid.uuid4().hex)
+    session_id = uuid.uuid4().hex
+    token = begin_session(session_id)
 
     client = get_chat_client()
     lore_tools = build_lore_tools()
@@ -121,7 +143,7 @@ async def play(ws: WebSocket) -> None:
 
     try:
         # OPENING is trusted system text — streamed unwrapped, not subject to the per-turn budget.
-        await _stream_turn(ws, gm, OPENING, thread)
+        await _stream_turn(ws, gm, OPENING, thread, session_id)
         while True:
             user = (await ws.receive_text()).strip()
             if not user:
@@ -143,7 +165,7 @@ async def play(ws: WebSocket) -> None:
             # under a per-turn timeout so a slow/looping turn degrades gracefully instead of crashing.
             try:
                 await asyncio.wait_for(
-                    _stream_turn(ws, gm, sanitize_learner_input(user), thread),
+                    _stream_turn(ws, gm, sanitize_learner_input(user), thread, session_id),
                     timeout=TURN_TIMEOUT_S)
             except asyncio.TimeoutError:
                 await ws.send_json(_bye("That took too long — let's try that again."))

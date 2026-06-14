@@ -14,12 +14,14 @@ from .agents.characters import build_characters
 from .agents.game_master import build_game_master
 from .clients import get_chat_client
 from .config import settings
+from .observability import configure_logging, turn_span
 from .safety import sanitize_learner_input
 from .tools.lore import build_lore_tools
 from .turn import OPENING
 
 # Keep the player's console clean: preview-SDK experimental warnings are noise, and transient
 # per-turn stream errors are caught and recovered in `_say`, so the SDK's error logs needn't surface.
+# The real failure detail still lands in the structured turn log (state/logs/turns.jsonl).
 warnings.filterwarnings("ignore")
 logging.getLogger("agent_framework").setLevel(logging.CRITICAL)
 
@@ -53,36 +55,44 @@ async def _say(agent, message, thread) -> str:
     # Retry transient turn failures silently while nothing has been displayed yet, so the player
     # only ever sees the "thinking…" cue. First attempt streams (live UX); retries use the
     # non-streamed call, which is more reliable here. Degrade gracefully only if all attempts fail.
-    for attempt in range(_TURN_ATTEMPTS):
-        try:
-            if attempt == 0:  # stream for a live, token-by-token reply
-                got: list[str] = []
-                async for update in agent.run_stream(message, thread=thread):
-                    chunk = getattr(update, "text", "") or ""
-                    if chunk:
-                        emit(chunk)
-                        got.append(chunk)
-                if got:
+    # Every turn — and the real cause of any failure — is logged via turn_span (state/logs/turns.jsonl).
+    with turn_span("cli", input_len=len(message)) as rec:
+        for attempt in range(_TURN_ATTEMPTS):
+            rec.note_attempt()
+            try:
+                if attempt == 0:  # stream for a live, token-by-token reply
+                    got: list[str] = []
+                    async for update in agent.run_stream(message, thread=thread):
+                        chunk = getattr(update, "text", "") or ""
+                        if chunk:
+                            emit(chunk)
+                            got.append(chunk)
+                    if got:
+                        print("\n")
+                        rec.ok = True
+                        return "".join(got)
+                # retry path (or an empty first stream): one non-streamed call
+                result = await agent.run(message, thread=thread)
+                text = getattr(result, "text", None) or str(result)
+                if text:
+                    emit(text)
                     print("\n")
-                    return "".join(got)
-            # retry path (or an empty first stream): one non-streamed call
-            result = await agent.run(message, thread=thread)
-            text = getattr(result, "text", None) or str(result)
-            if text:
-                emit(text)
-                print("\n")
-                return text
-        except Exception:  # noqa: BLE001 — transient/preview-SDK turn failures must degrade, not crash
-            if shown:  # partial already on screen — finalize, don't retry/duplicate
-                print("\n")
-                return "".join(shown)
-            await asyncio.sleep(0.6 * (attempt + 1))  # brief, invisible backoff, then retry
-    emit("(The story stumbled for a moment — please try that again.)")
-    print("\n")
-    return "".join(shown)
+                    rec.ok = True
+                    return text
+            except Exception as exc:  # noqa: BLE001 — transient/preview-SDK turn failures degrade, not crash
+                rec.note_failure(exc)
+                if shown:  # partial already on screen — finalize, don't retry/duplicate
+                    print("\n")
+                    rec.ok = True
+                    return "".join(shown)
+                await asyncio.sleep(0.6 * (attempt + 1))  # brief, invisible backoff, then retry
+        emit("(The story stumbled for a moment — please try that again.)")
+        print("\n")
+        return "".join(shown)
 
 
 async def main() -> None:
+    configure_logging()  # structured turn log → state/logs/turns.jsonl (console stays clean)
     print(BANNER)
     print(f"Subject: {settings.grade} {settings.subject}")
     print("Type your action each turn. Commands: 'quit' to exit.\n")
