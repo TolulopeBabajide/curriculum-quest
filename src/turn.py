@@ -23,6 +23,7 @@ import json
 import re
 from dataclasses import asdict, dataclass, field
 
+from .citations import get_turn_citations
 from .tools.state import load_state
 
 # Examiner verdict contract (M-03). The Examiner is instructed to return STRICT JSON of this
@@ -79,23 +80,68 @@ _CITATION_RE = re.compile(r"\(Source:\s*([^)]+)\)", re.IGNORECASE)
 _CHOICE_RE = re.compile(r"^\s*(\d+)[\).]\s+(.+?)\s*$", re.MULTILINE)
 
 
+_CONTINUE_RE = re.compile(r"say\s+['\"]?continue['\"]?", re.IGNORECASE)
+
+
 @dataclass
 class Turn:
     speaker: str
     text: str
     citations: list[dict] = field(default_factory=list)
     choices: list[dict] = field(default_factory=list)
+    expecting: str = "free"
     state: dict = field(default_factory=dict)
 
 
-def _parse_citations(text: str) -> list[dict]:
+def _parse_prose_citations(text: str) -> list[dict]:
+    """Fallback: pull any '(Source: …)' labels the GM wrote into the narration."""
     seen, out = set(), []
     for m in _CITATION_RE.finditer(text):
         label = m.group(1).strip()
         if label.lower() not in seen:
             seen.add(label.lower())
-            out.append({"label": label})
+            out.append({"label": label, "title": None, "source": "narration"})
     return out
+
+
+def _norm_citation(label: str) -> str:
+    """Normalize a citation for comparison: punctuation/separators → spaces, collapsed, lowercased.
+
+    Makes "A · Theme 1 (B) · Topic: C" and "A — Theme 1 (B" compare as one is-substring-of the other,
+    so the GM re-rendering a captured citation with different punctuation is recognized as a duplicate.
+    """
+    return re.sub(r"\s+", " ", re.sub(r"[·—–\-|:.]+", " ", label.lower())).strip()
+
+
+def _merge_citations(text: str) -> list[dict]:
+    """Authoritative citations from the retrieval tools, plus any prose-only ones not already covered.
+
+    A prose mention that (after punctuation-normalization) is contained in — or contains — a captured
+    citation is dropped in favour of the full captured one. This fixes the GM's lossy paraphrasing
+    (shortening or re-punctuating a citation) while still keeping a genuinely distinct prose citation.
+    """
+    captured = get_turn_citations()
+    out = list(captured)
+    norm_captured = [_norm_citation(c["label"]) for c in captured]
+    seen = set(norm_captured)
+    for prose in _parse_prose_citations(text):
+        n = _norm_citation(prose["label"])
+        if n in seen:
+            continue
+        if any(n in full or full in n for full in norm_captured):  # same source, re-phrased — skip
+            continue
+        out.append(prose)
+        seen.add(n)
+    return out
+
+
+def _expecting(text: str) -> str:
+    """Best-effort hint for the UI: is the learner expected to answer, continue, or free-type next?"""
+    if _CONTINUE_RE.search(text):
+        return "continue"
+    if "?" in text:  # a challenge/question was posed — expect an answer
+        return "answer"
+    return "free"
 
 
 def _parse_choices(text: str) -> list[dict]:
@@ -126,8 +172,9 @@ def build_turn(text: str, speaker: str = "Storyteller") -> dict:
     turn = Turn(
         speaker=speaker,
         text=text,
-        citations=_parse_citations(text),
+        citations=_merge_citations(text),
         choices=_parse_choices(text),
+        expecting=_expecting(text),
         state=_state_snapshot(),
     )
     return asdict(turn)

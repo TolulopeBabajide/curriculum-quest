@@ -33,6 +33,8 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Iterator
 
+from .citations import begin_turn_citations
+
 _ROOT = Path(__file__).resolve().parent.parent
 LOG_DIR = _ROOT / "state" / "logs"
 _TURN_LOG = LOG_DIR / "turns.jsonl"
@@ -202,6 +204,7 @@ def turn_span(interface: str, session_id: str | None = None, input_len: int = 0)
     Never raises on its own; logging/metrics failures must not break gameplay.
     """
     rec = TurnRecord(interface=interface, session_id=session_id, input_len=input_len)
+    begin_turn_citations()  # fresh citation accumulator for this turn (read by turn.build_turn)
     start = time.monotonic()
     try:
         yield rec

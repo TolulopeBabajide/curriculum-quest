@@ -20,6 +20,7 @@ from pathlib import Path
 
 from agent_framework import ai_function
 
+from ..citations import record_citation
 from ..config import ROOT, KB_MCP_API_VERSION, kb_mcp_url, settings
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -79,6 +80,9 @@ def build_foundry_iq_tools():
             references.append(
                 {"ref_id": ref.get("id"), "title": ref.get("title"), "citation": citation}
             )
+            # Record the exact citation for the Turn contract — authoritative, independent of how the
+            # GM later phrases it in prose (it tends to shorten). See src/citations.py.
+            record_citation(citation, title=ref.get("title"), source="foundry-iq")
         return json.dumps({"source": "foundry-iq", "answer": answer, "references": references})
 
     @ai_function
@@ -179,6 +183,8 @@ def curriculum_knowledge(query: str) -> str:
         JSON with retrieved passages and their citations.
     """
     hits = _search([_CURRICULUM_DIR], query)
+    for ch in hits:
+        record_citation(ch["citation"], title=ch.get("title"), source="local-fallback")
     return json.dumps(
         {"source": "local-fallback", "results": hits}
         if hits
@@ -190,6 +196,8 @@ def curriculum_knowledge(query: str) -> str:
 def world_lore(query: str) -> str:
     """Retrieve cited world/lore content from the synthetic world pack (local fallback)."""
     hits = _search([_WORLD_DIR], query)
+    for ch in hits:
+        record_citation(ch["citation"], title=ch.get("title"), source="local-fallback")
     return json.dumps({"source": "local-fallback", "results": hits})
 
 
