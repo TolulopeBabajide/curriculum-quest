@@ -1,0 +1,57 @@
+# Curriculum Quest CI — minimal, green-by-design pipeline (backlog L-01).
+# Runs on every push / PR to main and develop. No Azure secrets required:
+# the compile smoke check uses compileall (no imports that need creds), and the
+# evals run with USE_LOCAL_FALLBACK=true so retrieval uses the local cited
+# fallback instead of hitting Foundry IQ / Azure AI Search.
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        # Preview pins (agent-framework, azure preview SDKs) are heavy — a slow
+        # install here is expected. pytest is not a runtime dep, so install it
+        # explicitly for the eval step.
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Compile smoke check
+        # compileall catches syntax errors without importing modules that would
+        # require Azure credentials or network access — keeps CI green offline.
+        run: python -m compileall src scripts/seed_foundry_iq.py scripts/create_foundry_iq_kbs.py
+
+      - name: Run evals (offline)
+        # USE_LOCAL_FALLBACK routes curriculum/world retrieval through the local
+        # cited fallback in src/tools/lore.py, so the suite is deterministic and
+        # needs no .env / Azure connection.
+        env:
+          USE_LOCAL_FALLBACK: "true"
+        run: pytest evals/ -q
+
+      - name: Secret scan
+        # Scans every tracked text file for hardcoded-secret patterns. Exits
+        # non-zero only if a secret is detected, failing the build.
+        run: |
+          status=0
+          while IFS= read -r f; do
+            bash scripts/secret-scan.sh "$f" >/dev/null 2>&1 || { echo "Secret detected in $f"; status=1; }
+          done < <(git ls-files)
+          exit "$status"
