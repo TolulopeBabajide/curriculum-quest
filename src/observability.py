@@ -118,14 +118,12 @@ class _Metrics:
     turns_ok: int = 0
     turns_retried: int = 0  # turns that needed >1 attempt but still succeeded
     turns_failed: int = 0  # turns that exhausted all attempts (graceful fallback shown)
-    turns_recovered_new_thread: int = 0  # turns saved only by the fresh-thread last resort
     attempts_total: int = 0
     error_causes: dict[str, int] = field(default_factory=dict)
     _latencies_ms: list[float] = field(default_factory=list)
     _lock: Lock = field(default_factory=Lock)
 
-    def record(self, *, attempts: int, ok: bool, latency_ms: float, cause: str | None,
-               recovered_new_thread: bool = False) -> None:
+    def record(self, *, attempts: int, ok: bool, latency_ms: float, cause: str | None) -> None:
         with self._lock:
             self.turns_total += 1
             self.attempts_total += attempts
@@ -133,8 +131,6 @@ class _Metrics:
                 self.turns_ok += 1
                 if attempts > 1:
                     self.turns_retried += 1
-                if recovered_new_thread:
-                    self.turns_recovered_new_thread += 1
             else:
                 self.turns_failed += 1
             if cause:
@@ -155,7 +151,6 @@ class _Metrics:
                 "turns_ok": self.turns_ok,
                 "turns_retried": self.turns_retried,
                 "turns_failed": self.turns_failed,
-                "turns_recovered_new_thread": self.turns_recovered_new_thread,
                 "attempts_total": self.attempts_total,
                 "success_rate": round(self.turns_ok / self.turns_total, 3) if self.turns_total else None,
                 "latency_ms_p50": pct(0.50),
@@ -182,7 +177,6 @@ class TurnRecord:
     attempts: int = 0
     ok: bool = False
     cause: str | None = None
-    recovered_on_new_thread: bool = False  # set when only the fresh-thread last resort succeeded
     detail: dict[str, Any] = field(default_factory=dict)
 
     def note_attempt(self) -> None:
@@ -215,8 +209,7 @@ def turn_span(interface: str, session_id: str | None = None, input_len: int = 0)
         latency_ms = round((time.monotonic() - start) * 1000, 1)
         try:
             _metrics.record(
-                attempts=max(rec.attempts, 1), ok=rec.ok, latency_ms=latency_ms, cause=rec.cause,
-                recovered_new_thread=rec.recovered_on_new_thread)
+                attempts=max(rec.attempts, 1), ok=rec.ok, latency_ms=latency_ms, cause=rec.cause)
             level = logging.INFO if rec.ok else logging.WARNING
             _logger.log(
                 level, "turn",
@@ -228,7 +221,6 @@ def turn_span(interface: str, session_id: str | None = None, input_len: int = 0)
                     "ok": rec.ok,
                     "latency_ms": latency_ms,
                     "cause": rec.cause,
-                    "recovered_on_new_thread": rec.recovered_on_new_thread,
                     **({"error": rec.detail} if rec.detail else {}),
                 },
             )
