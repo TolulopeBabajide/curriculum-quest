@@ -19,10 +19,50 @@ reads what the working agents already produce.
 """
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import asdict, dataclass, field
 
 from .tools.state import load_state
+
+# Examiner verdict contract (M-03). The Examiner is instructed to return STRICT JSON of this
+# shape; `parse_verdict` validates it before anything downstream could trust it. Today the
+# verdict is consumed by the Game Master LLM reading the examiner's text (LLM-orchestrated), so
+# this validator is exposed for callers/tests and as the enforcement point if/when consumption
+# becomes deterministic. Wiring a hard "reject malformed verdict" gate into the live loop would
+# require an orchestration change (the GM, not Python, currently routes the examiner output).
+_VALID_VERDICTS = {"correct", "partial", "wrong"}
+_VERDICT_KEYS = ("verdict", "why", "hint", "citation")
+_JSON_OBJECT_RE = re.compile(r"\{.*\}", re.DOTALL)
+
+
+def parse_verdict(text: str) -> dict | None:
+    """Parse + validate an Examiner verdict from possibly-prose-wrapped text.
+
+    Returns the verdict dict when `text` contains a JSON object with all required keys
+    (`verdict`, `why`, `hint`, `citation`) and `verdict` is one of correct/partial/wrong.
+    Returns None for malformed JSON, a missing key, or an out-of-range verdict.
+    """
+    if not text:
+        return None
+    candidate = text.strip()
+    try:
+        obj = json.loads(candidate)
+    except (json.JSONDecodeError, ValueError):
+        m = _JSON_OBJECT_RE.search(candidate)  # tolerate surrounding prose/code fences
+        if not m:
+            return None
+        try:
+            obj = json.loads(m.group(0))
+        except (json.JSONDecodeError, ValueError):
+            return None
+    if not isinstance(obj, dict):
+        return None
+    if any(k not in obj for k in _VERDICT_KEYS):
+        return None
+    if obj["verdict"] not in _VALID_VERDICTS:
+        return None
+    return obj
 
 # The opening prompt that kicks off a session — single source of truth for CLI + server.
 OPENING = (
