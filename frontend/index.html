@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Curriculum Quest — Oke-Ola</title>
+<style>
+  :root {
+    --cream:#fdf6ec; --paper:#fffdf8; --ink:#3a2e26; --muted:#7c6a5b;
+    --terra:#c75b39; --green:#3f7d5a; --gold:#e0a23b; --teal:#2f7d86;
+    --line:#e7d9c5; --shadow:0 6px 20px rgba(58,46,38,.12);
+  }
+  * { box-sizing:border-box; }
+  .portrait svg, .chip-av svg, #scene svg, #actor svg, .roster .portrait svg { width:100%; height:100%; display:block; }
+  body {
+    margin:0; font-family:"Segoe UI",system-ui,sans-serif; color:var(--ink);
+    background:radial-gradient(1200px 600px at 70% -10%, #fff5e0 0%, var(--cream) 55%);
+    min-height:100vh;
+  }
+  header {
+    display:flex; align-items:center; gap:14px; padding:14px 22px;
+    border-bottom:1px solid var(--line); background:rgba(255,253,248,.8); backdrop-filter:blur(6px);
+    position:sticky; top:0; z-index:5;
+  }
+  header h1 { font-size:18px; margin:0; letter-spacing:.2px; }
+  header h1 small { color:var(--muted); font-weight:500; }
+  .badge { font-size:11px; padding:3px 9px; border-radius:999px; border:1px solid var(--line); color:var(--muted); }
+  .badge.live { color:var(--green); border-color:#bfe0cd; background:#f1faf4; }
+  .badge.fallback { color:var(--gold); border-color:#f0dcae; background:#fdf6e6; }
+  .spacer { flex:1; }
+  main {
+    display:grid; grid-template-columns: 1.15fr 320px; gap:18px;
+    max-width:1180px; margin:18px auto; padding:0 18px;
+  }
+  @media (max-width:880px){ main{ grid-template-columns:1fr; } .side{ order:-1; } }
+
+  /* Stage */
+  .stage {
+    position:relative; height:230px; border-radius:18px; overflow:hidden;
+    box-shadow:var(--shadow); border:1px solid var(--line); margin-bottom:16px;
+  }
+  .stage .scene { position:absolute; inset:0; width:100%; height:100%; }
+  .stage .place {
+    position:absolute; left:14px; top:12px; font-size:12px; color:#fff; letter-spacing:.4px;
+    background:rgba(58,46,38,.45); padding:4px 10px; border-radius:999px; text-transform:uppercase;
+  }
+  .actor {
+    position:absolute; right:18px; bottom:0; width:150px; height:190px;
+    display:flex; flex-direction:column; align-items:center; justify-content:flex-end;
+    filter:drop-shadow(0 8px 10px rgba(0,0,0,.25));
+  }
+  .actor .portrait { width:130px; height:130px; }
+  .actor .name {
+    margin-bottom:10px; font-size:12px; font-weight:600; color:#fff;
+    background:var(--terra); padding:3px 10px; border-radius:999px; box-shadow:var(--shadow);
+  }
+
+  /* Transcript */
+  .transcript { display:flex; flex-direction:column; gap:14px; }
+  .card {
+    background:var(--paper); border:1px solid var(--line); border-radius:16px;
+    padding:15px 17px; box-shadow:var(--shadow); animation:rise .25s ease;
+  }
+  @keyframes rise { from{ opacity:0; transform:translateY(6px);} to{opacity:1;transform:none;} }
+  .card .who { display:flex; align-items:center; gap:9px; margin-bottom:7px; }
+  .card .who .chip-av { width:26px; height:26px; border-radius:50%; overflow:hidden; flex:none; }
+  .card .who b { font-size:13.5px; }
+  .card .who.you b { color:var(--teal); }
+  .card .body { font-family:Georgia,"Times New Roman",serif; font-size:16px; line-height:1.6; white-space:pre-wrap; }
+  .card.you { background:#f3fafb; border-color:#cde7ea; }
+  .cites { display:flex; flex-wrap:wrap; gap:7px; margin-top:11px; }
+  .cite {
+    font-size:11px; color:var(--green); background:#f1faf4; border:1px solid #cdead9;
+    padding:3px 9px; border-radius:8px; display:inline-flex; align-items:center; gap:5px; max-width:100%;
+  }
+  .cite b { font-weight:700; } .cite span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .cite.src-narration { color:var(--muted); background:#faf5ee; border-color:var(--line); }
+  .think { display:inline-flex; gap:4px; padding:4px 0; }
+  .think i { width:7px; height:7px; border-radius:50%; background:var(--terra); opacity:.5; animation:blink 1.2s infinite; }
+  .think i:nth-child(2){ animation-delay:.2s;} .think i:nth-child(3){ animation-delay:.4s;}
+  @keyframes blink { 0%,80%,100%{opacity:.3;transform:translateY(0);} 40%{opacity:1;transform:translateY(-3px);} }
+
+  /* Sidebar */
+  .side { display:flex; flex-direction:column; gap:14px; }
+  .panel { background:var(--paper); border:1px solid var(--line); border-radius:16px; padding:14px 15px; box-shadow:var(--shadow); }
+  .panel h3 { margin:0 0 10px; font-size:12px; text-transform:uppercase; letter-spacing:.6px; color:var(--muted); }
+  .lesson { font-size:15px; font-weight:600; }
+  .lesson small { display:block; font-weight:500; color:var(--muted); font-size:12px; margin-top:2px; }
+  .bar { height:7px; background:#efe4d4; border-radius:999px; overflow:hidden; margin-top:9px; }
+  .bar > i { display:block; height:100%; background:linear-gradient(90deg,var(--gold),var(--terra)); width:0; transition:width .5s; }
+  .pills { display:flex; flex-wrap:wrap; gap:6px; }
+  .pill { font-size:11.5px; background:#f6efe3; border:1px solid var(--line); border-radius:999px; padding:3px 9px; }
+  .pill.skill { background:#fbf0d8; border-color:#f0dcae; }
+  .pill.place { background:#eef7f1; border-color:#cdead9; }
+  .empty { color:var(--muted); font-size:12.5px; font-style:italic; }
+  .roster { display:flex; gap:8px; flex-wrap:wrap; }
+  .roster figure { margin:0; width:48px; text-align:center; }
+  .roster .portrait { width:42px; height:42px; }
+  .roster figcaption { font-size:10px; color:var(--muted); margin-top:2px; }
+  .conf { display:flex; gap:3px; }
+  .conf i { flex:1; height:9px; border-radius:3px; background:#efe4d4; }
+  .conf i.on { background:var(--green); }
+
+  /* Input */
+  .inputbar {
+    position:sticky; bottom:0; margin-top:16px; display:flex; gap:10px; padding:12px;
+    background:rgba(255,253,248,.92); border:1px solid var(--line); border-radius:14px; box-shadow:var(--shadow);
+  }
+  .inputbar input {
+    flex:1; border:1px solid var(--line); border-radius:10px; padding:11px 13px; font-size:15px;
+    background:#fff; color:var(--ink); font-family:inherit;
+  }
+  .inputbar input:focus { outline:2px solid #f0dcae; border-color:var(--gold); }
+  button {
+    border:none; border-radius:10px; padding:11px 16px; font-size:14px; font-weight:600;
+    cursor:pointer; background:var(--terra); color:#fff; transition:filter .15s;
+  }
+  button:hover { filter:brightness(1.06); } button:disabled { opacity:.5; cursor:not-allowed; }
+  button.continue { background:var(--green); }
+  .hint { text-align:center; font-size:11.5px; color:var(--muted); margin:8px 0 24px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Curriculum Quest <small>· Oke-Ola</small></h1>
+  <span id="grounding" class="badge">connecting…</span>
+  <div class="spacer"></div>
+  <span id="conn" class="badge">●</span>
+</header>
+
+<main>
+  <section>
+    <div class="stage">
+      <div id="scene" class="scene"></div>
+      <div id="place" class="place">Oke-Ola</div>
+      <div class="actor"><span id="actorName" class="name">Storyteller</span><div id="actor" class="portrait"></div></div>
+    </div>
+    <div id="transcript" class="transcript"></div>
+    <div class="inputbar">
+      <input id="msg" placeholder="Type your answer or action…" autocomplete="off" />
+      <button id="continueBtn" class="continue" style="display:none">Continue ▶</button>
+      <button id="send">Send</button>
+    </div>
+    <div class="hint">The characters are AI. This is a learning story — answer in your own words. Type <b>quit</b> to end.</div>
+  </section>
+
+  <aside class="side">
+    <div class="panel">
+      <h3>Lesson</h3>
+      <div id="lesson" class="lesson">Beginning the journey…</div>
+      <div class="bar"><i id="lessonBar"></i></div>
+    </div>
+    <div class="panel">
+      <h3>Confidence</h3>
+      <div id="conf" class="conf"></div>
+    </div>
+    <div class="panel">
+      <h3>Skills earned</h3>
+      <div id="skills" class="pills"><span class="empty">none yet</span></div>
+    </div>
+    <div class="panel">
+      <h3>Places helped</h3>
+      <div id="places" class="pills"><span class="empty">none yet</span></div>
+    </div>
+    <div class="panel">
+      <h3>The people of Oke-Ola</h3>
+      <div id="roster" class="roster"></div>
+    </div>
+  </aside>
+</main>
+
+<script>
+// ---- Original SVG art (drop-in upgrade: if /assets/portraits|scenes/<key>.png exists it is used) ----
+const SKIN="#9b6a44", SKIN2="#7d5436";
+function portraitSVG(key){
+  const face=`<circle cx="65" cy="62" r="30" fill="${SKIN}"/><path d="M40 70 q25 26 50 0 v22 h-50z" fill="${SKIN}"/>`;
+  const art={
+    narrator:`<rect x="34" y="86" width="62" height="40" rx="8" fill="#6a4ea0"/><circle cx="65" cy="58" r="30" fill="#f3e2c5"/><path d="M50 50 q15 -14 30 0" stroke="#e0a23b" stroke-width="5" fill="none"/><path d="M55 96 l10 -14 10 14z" fill="#e0a23b"/><circle cx="65" cy="40" r="4" fill="#e0a23b"/>`,
+    adaeze:`${face}<path d="M36 50 q29 -34 58 0 q-10 -6 -29 -6 q-19 0 -29 6z" fill="#2a2018"/><rect x="34" y="92" width="62" height="34" rx="8" fill="#2f7d86"/><rect x="48" y="56" width="14" height="10" rx="3" fill="none" stroke="#2a2018" stroke-width="2.5"/><rect x="68" y="56" width="14" height="10" rx="3" fill="none" stroke="#2a2018" stroke-width="2.5"/><line x1="62" y1="60" x2="68" y2="60" stroke="#2a2018" stroke-width="2.5"/>`,
+    nkechi:`${face}<path d="M34 44 q31 -26 62 0 q-6 -20 -31 -20 q-25 0 -31 20z" fill="#c75b39"/><path d="M40 40 h50 v8 h-50z" fill="#e0a23b"/><rect x="34" y="92" width="62" height="34" rx="8" fill="#d8772b"/>`,
+    sule:`${face}<path d="M40 46 q25 -20 50 0 l-2 -12 h-46z" fill="#3f4d3a"/><path d="M44 78 q21 18 42 0 q-4 16 -21 16 q-17 0 -21 -16z" fill="#d8d2c8"/><rect x="34" y="92" width="62" height="34" rx="8" fill="#6b4a2f"/>`,
+    bisi:`${face}<path d="M40 48 q25 -26 50 0 l0 -8 h-50z" fill="#ffffff"/><rect x="60" y="40" width="10" height="4" fill="#c75b39"/><rect x="63" y="37" width="4" height="10" fill="#c75b39"/><rect x="34" y="92" width="62" height="34" rx="8" fill="#3a6ea5"/>`,
+    tunde:`${face}<path d="M40 50 q25 -28 50 0 q-8 -10 -25 -10 q-17 0 -25 10z" fill="#241a12"/><rect x="34" y="92" width="62" height="34" rx="8" fill="#3f7d5a"/><circle cx="55" cy="60" r="3" fill="#2a2018"/><circle cx="75" cy="60" r="3" fill="#2a2018"/><path d="M56 74 q9 8 18 0" stroke="#2a2018" stroke-width="2.5" fill="none"/>`,
+  };
+  return `<svg viewBox="0 0 130 130" xmlns="http://www.w3.org/2000/svg"><rect width="130" height="130" rx="20" fill="#f6ead3"/>${art[key]||art.narrator}</svg>`;
+}
+function sceneSVG(key){
+  const sky=(a,b)=>`<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient></defs><rect width="600" height="230" fill="url(#g)"/>`;
+  const ground=(c)=>`<rect y="180" width="600" height="50" fill="${c}"/>`;
+  const art={
+    home:`${sky('#fcd9a0','#f8b15c')}${ground('#b9824e')}<polygon points="120,180 175,135 230,180" fill="#9c5b32"/><rect x="140" y="180" width="70" height="0" /><rect x="142" y="150" width="66" height="30" fill="#caa06a"/><circle cx="470" cy="60" r="34" fill="#fff2cf"/>`,
+    market:`${sky('#ffe7b3','#ffc06a')}${ground('#caa472')}<polygon points="90,150 160,150 125,120" fill="#c75b39"/><polygon points="200,150 270,150 235,120" fill="#3f7d5a"/><polygon points="310,150 380,150 345,120" fill="#2f7d86"/><rect x="100" y="150" width="50" height="30" fill="#e7c79a"/><rect x="210" y="150" width="50" height="30" fill="#e7c79a"/><rect x="320" y="150" width="50" height="30" fill="#e7c79a"/>`,
+    farm:`${sky('#cdeafc','#a9d18e')}${ground('#7a9e57')}<circle cx="500" cy="55" r="30" fill="#ffe79e"/><path d="M40 230 l560 0 M40 205 q280 -20 560 0" stroke="#5f8043" stroke-width="3" fill="none"/><g fill="#3f7d5a"><path d="M120 200 l0 -26 M120 186 l-12 -8 M120 186 l12 -8"/><path d="M260 200 l0 -26 M260 186 l-12 -8 M260 186 l12 -8"/><path d="M400 200 l0 -26 M400 186 l-12 -8 M400 186 l12 -8"/></g>`,
+    kitchen:`${sky('#5a3925','#3a241a')}${ground('#2a1a12')}<ellipse cx="300" cy="180" rx="55" ry="20" fill="#2a2a2a"/><rect x="262" y="140" width="76" height="42" rx="8" fill="#444"/><path d="M280 138 q20 -34 40 0z" fill="#888" opacity=".5"/><g fill="#e0a23b"><path d="M290 182 q-8 14 4 22 q-10 -2 -8 -14z"/><path d="M310 182 q8 14 -4 22 q10 -2 8 -14z"/></g>`,
+    night:`${sky('#2a2f55','#141828')}${ground('#1b1f33')}<circle cx="120" cy="55" r="26" fill="#f4ecc8"/><polygon points="430,180 480,135 530,180" fill="#2c2438"/><rect x="450" y="150" width="60" height="30" fill="#3a3050"/><circle cx="300" cy="150" r="10" fill="#ffd76a"/><circle cx="300" cy="150" r="22" fill="#ffd76a" opacity=".22"/>`,
+    stream:`${sky('#bfe3f2','#8fc7a0')}${ground('#6b9a5e')}<path d="M0 185 q150 -22 300 0 t300 0 v45 h-600z" fill="#4a93b8"/><path d="M0 200 q150 -16 300 0 t300 0" stroke="#bfe7f5" stroke-width="3" fill="none" opacity=".7"/><circle cx="510" cy="55" r="28" fill="#fff2cf"/>`,
+    sky:`${sky('#202a55','#0d1330')}<circle cx="470" cy="70" r="38" fill="#f4ecc8"/><circle cx="455" cy="62" r="38" fill="#0d1330"/><g fill="#fff"><circle cx="90" cy="60" r="2.5"/><circle cx="160" cy="40" r="1.8"/><circle cx="230" cy="80" r="2.2"/><circle cx="300" cy="45" r="1.6"/><circle cx="120" cy="120" r="2"/><circle cx="350" cy="110" r="2.4"/><circle cx="60" cy="150" r="1.8"/><circle cx="270" cy="150" r="2"/></g>`,
+    health:`${sky('#e2f3f5','#bfe3e6')}${ground('#cdeae0')}<rect x="220" y="110" width="160" height="70" rx="6" fill="#fff"/><polygon points="220,110 300,80 380,110" fill="#2f7d86"/><rect x="292" y="128" width="16" height="44" fill="#c75b39"/><rect x="278" y="142" width="44" height="16" fill="#c75b39"/>`,
+    default:`${sky('#fcd9a0','#f4b97a')}${ground('#b9824e')}<circle cx="480" cy="60" r="32" fill="#fff2cf"/>`,
+  };
+  return `<svg viewBox="0 0 600 230" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">${art[key]||art.default}</svg>`;
+}
+// Use a drop-in PNG if present, else fall back to the inline SVG. Returns an HTML string.
+// The SVG is stashed in data-svg (single-quoted; our SVG uses only double quotes) and injected on 404.
+function artHTML(kind,key){
+  const svg = kind==='portrait'?portraitSVG(key):sceneSVG(key);
+  const folder = kind==='portrait'?'portraits':'scenes';
+  return `<img src="/assets/${folder}/${key}.png" alt="${key}"
+            style="width:100%;height:100%;object-fit:cover;border-radius:inherit"
+            data-svg='${svg}'
+            onerror="this.insertAdjacentHTML('afterend', this.dataset.svg); this.remove();">`;
+}
+
+// ---- Character + scene mapping ----
+const CHARS=[
+  {key:'adaeze', name:'Teacher Adaeze', match:/adaeze/i},
+  {key:'nkechi', name:'Mama Nkechi', match:/nkechi/i},
+  {key:'sule',   name:'Baba Sule', match:/baba sule|\bsule/i},
+  {key:'bisi',   name:'Nurse Bisi', match:/bisi/i},
+  {key:'tunde',  name:'Tunde', match:/tunde/i},
+];
+function activeChar(text){
+  for(const c of CHARS){ if(c.match.test(text)) return c; }
+  return {key:'narrator', name:'Storyteller'};
+}
+function sceneKey(place){
+  const p=(place||'').toLowerCase();
+  if(/night sky|sky|moon|star/.test(p)) return 'sky';
+  if(/night/.test(p)) return 'night';
+  if(/market/.test(p)) return 'market';
+  if(/kitchen/.test(p)) return 'kitchen';
+  if(/farm/.test(p)) return 'farm';
+  if(/stream|river|water/.test(p)) return 'stream';
+  if(/health|clinic|post/.test(p)) return 'health';
+  if(/home|compound|house/.test(p)) return 'home';
+  return 'default';
+}
+const LESSONS=["Family Health","Environmental Pollution","Living & Non-Living Things","Energy",
+  "Renewable & Non-Renewable Energy","Forces","Science & Development"];
+
+// ---- DOM helpers ----
+const $=s=>document.querySelector(s);
+const transcript=$('#transcript');
+function setScene(place){
+  $('#scene').innerHTML=artHTML('scene',sceneKey(place));
+  $('#place').textContent=place||'Oke-Ola';
+}
+function setActor(text){
+  const c=activeChar(text||'');
+  $('#actor').innerHTML=artHTML('portrait',c.key);
+  $('#actorName').textContent=c.name;
+}
+function renderRoster(){
+  $('#roster').innerHTML=[{key:'narrator',name:'Storyteller'},...CHARS].map(c=>
+    `<figure><div class="portrait">${portraitSVG(c.key)}</div><figcaption>${c.name.split(' ').slice(-1)[0]}</figcaption></figure>`).join('');
+}
+
+// ---- Transcript cards ----
+let pending=null; // the card currently being streamed/awaited
+function youCard(text){
+  const el=document.createElement('div'); el.className='card you';
+  el.innerHTML=`<div class="who you"><b>You</b></div><div class="body"></div>`;
+  el.querySelector('.body').textContent=text; transcript.appendChild(el); scroll();
+}
+function startStoryCard(){
+  const el=document.createElement('div'); el.className='card';
+  el.innerHTML=`<div class="who"><span class="chip-av">${portraitSVG('narrator')}</span><b>Storyteller</b></div>
+                <div class="body"></div><div class="think"><i></i><i></i><i></i></div><div class="cites"></div>`;
+  transcript.appendChild(el); pending=el; scroll(); return el;
+}
+function streamInto(chunk){
+  if(!pending) startStoryCard();
+  const th=pending.querySelector('.think'); if(th) th.remove();
+  pending.querySelector('.body').textContent += chunk; scroll();
+}
+function finalizeTurn(turn){
+  const el=pending||startStoryCard();
+  const th=el.querySelector('.think'); if(th) th.remove();
+  el.querySelector('.body').textContent = turn.text || el.querySelector('.body').textContent;
+  // speaker portrait chip + name
+  const c=activeChar(turn.text||'');
+  el.querySelector('.chip-av').innerHTML=portraitSVG(c.key);
+  el.querySelector('.who b').textContent=c.name;
+  // citations
+  const cites=el.querySelector('.cites');
+  cites.innerHTML=(turn.citations||[]).map(ci=>{
+    const src=ci.source==='foundry-iq'?'Foundry IQ':(ci.source==='local-fallback'?'local':'cited');
+    return `<span class="cite ${ci.source==='narration'?'src-narration':''}" title="${esc(ci.label)}"><b>${src}</b><span>${esc(ci.label)}</span></span>`;
+  }).join('');
+  pending=null;
+  if(turn.state) updateSidebar(turn.state);
+  setActor(turn.text);
+  setInputMode(turn.expecting);
+  scroll();
+}
+function esc(s){ return (s||'').replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
+function scroll(){ window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'}); }
+
+// ---- Sidebar ----
+function updateSidebar(s){
+  const idx=s.lesson_index||0;
+  $('#lesson').innerHTML=`Lesson ${Math.min(idx+1,LESSONS.length)} of ${LESSONS.length}<small>${LESSONS[Math.min(idx,LESSONS.length-1)]}</small>`;
+  $('#lessonBar').style.width=Math.round(Math.min(idx,LESSONS.length)/LESSONS.length*100)+'%';
+  if(s.location) setScene(s.location);
+  const conf=Math.max(0,Math.min(10,s.confidence??3));
+  $('#conf').innerHTML=Array.from({length:10},(_,i)=>`<i class="${i<conf?'on':''}"></i>`).join('');
+  const skills=s.skills||[];
+  $('#skills').innerHTML=skills.length?skills.map(x=>`<span class="pill skill">★ ${esc(x)}</span>`).join(''):'<span class="empty">none yet</span>';
+  const places=s.places_helped||[];
+  $('#places').innerHTML=places.length?places.map(x=>`<span class="pill place">✓ ${esc(x)}</span>`).join(''):'<span class="empty">none yet</span>';
+}
+
+// ---- Input ----
+function setInputMode(expecting){
+  const cont=$('#continueBtn');
+  cont.style.display = expecting==='continue' ? 'inline-block' : 'none';
+  $('#msg').placeholder = expecting==='answer' ? 'Type your answer…'
+                        : expecting==='continue' ? 'Type "continue", or your own words…'
+                        : 'Type your answer or action…';
+}
+
+// ---- WebSocket ----
+let ws, ready=false;
+function connect(){
+  const proto=location.protocol==='https:'?'wss':'ws';
+  ws=new WebSocket(`${proto}://${location.host}/play`);
+  ws.onopen=()=>{ $('#conn').textContent='● live'; $('#conn').className='badge live'; };
+  ws.onclose=()=>{ $('#conn').textContent='● offline'; $('#conn').className='badge fallback'; lock(true); };
+  ws.onerror=()=>{ $('#conn').textContent='● error'; $('#conn').className='badge fallback'; };
+  ws.onmessage=ev=>{
+    const m=JSON.parse(ev.data);
+    if(m.type==='status' && m.status==='thinking'){ startStoryCard(); lock(true); }
+    else if(m.type==='delta'){ streamInto(m.text||''); }
+    else if(m.type==='turn'){ finalizeTurn(m); ready=true; lock(false); }
+  };
+}
+function lock(b){ $('#send').disabled=b; $('#continueBtn').disabled=b; }
+function send(text){
+  if(!ws||ws.readyState!==1||!text.trim()) return;
+  youCard(text); ws.send(text); $('#msg').value=''; lock(true);
+}
+$('#send').onclick=()=>send($('#msg').value);
+$('#continueBtn').onclick=()=>send('continue');
+$('#msg').addEventListener('keydown',e=>{ if(e.key==='Enter') send($('#msg').value); });
+
+// ---- Boot ----
+async function boot(){
+  renderRoster(); setScene('Home & compound'); setActor('');
+  try{ const h=await (await fetch('/health')).json();
+    const g=$('#grounding'); if(h.grounding==='foundry-iq'){ g.textContent='Foundry IQ grounded'; g.className='badge live'; }
+    else { g.textContent='local fallback'; g.className='badge fallback'; }
+  }catch{ $('#grounding').textContent='offline'; }
+  connect();
+}
+boot();
+</script>
+</body>
+</html>

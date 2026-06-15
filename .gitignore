@@ -5,6 +5,8 @@ __pycache__/
 *.pyc
 *.pyo
 state/campaign_state.json
+state/sessions/
+state/logs/
 .DS_Store
 
 # Secrets
@@ -18,6 +20,7 @@ state/campaign_state.json
 /BUILD-PLAN.md
 /HANDOFF.md
 /SUBMISSION.md
+/PRE-SUBMIT.md
 # Internal config
 /CLAUDE.md
 /project-config.md
@@ -30,3 +33,4 @@ state/campaign_state.json
 /scripts/*
 !/scripts/seed_foundry_iq.py
 !/scripts/create_foundry_iq_kbs.py
+!/scripts/gen_assets.py

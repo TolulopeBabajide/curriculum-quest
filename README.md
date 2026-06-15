@@ -59,10 +59,13 @@ campaign state). Swappable to any of the 48 NERDC subject/grade files — see `s
 ## 📊 Data & Responsible AI
 
 - **The community frame is 100% original synthetic data** — Oke-Ola, its places, and its people in `worldpack/` are invented for this project (a *representative* Nigerian community, not a real town).
-- **Learner personalization uses only what the learner volunteers about their own surroundings** at runtime (home type, cooking/lighting source, nearby market/farm/stream). It is stored locally in `state/` and never committed; no names, addresses, or PII are required.
+- **Learner personalization uses only what the learner volunteers** at runtime — a first name and a few details about their surroundings (home type, cooking/lighting source, nearby market/farm/stream). **Providing a name is optional**; the game plays fine without one, and no address or other identifier is requested.
+- **Where that data goes (be clear-eyed):** like any LLM application, the learner's messages and the details they share are **sent to Azure OpenAI (`gpt-5-mini`) on each turn** to generate the characters' responses — so this input *does leave the device* and is processed by a third party (Microsoft Azure) under its terms. It is **stored only locally** (gitignored `state/`; per-session files are deleted on disconnect), **never committed** to this repo, and not written to application logs.
 - **Curriculum content is public NERDC educational material** (not PII, not customer data, not proprietary) used as the grounded knowledge source, with **citations back to curriculum objectives**.
-- No real student data, no PII, no credentials anywhere in this repo.
+- **All UI art is original** — the web client's character portraits and scene backdrops are AI-generated (Azure OpenAI `gpt-image-1`, via `scripts/gen_assets.py`) depicting **fictional** Oke-Ola characters and generic community scenes, with hand-authored inline SVG as the built-in fallback. No third-party assets and no real-person likenesses.
+- No student data, PII, or credentials are committed anywhere in this repo.
 - Learners are told they are interacting with AI. Answers are checked against cited sources before progress is granted (human-in-the-loop: the learner *is* the human).
+- **For real classroom/child use** (beyond this demo): verifiable parental/teacher consent (COPPA-school path; Nigeria NDPA guardian consent), input minimization, and a data-retention statement would be required first — tracked in the backlog (GRC-04/05/06).
 
 ---
 
@@ -78,9 +81,17 @@ az login                    # DefaultAzureCredential
 # 2. Seed Foundry IQ (one time) — indexes worldpack + curriculum, creates the knowledge base
 python scripts/seed_foundry_iq.py
 
-# 3. Play
+# 3a. Play in the terminal (the guaranteed fallback)
 python -m src.game_loop
+
+# 3b. Play in the browser (styled web client)
+uvicorn src.server:app --port 8000   # then open http://127.0.0.1:8000/
 ```
+
+The web client (`frontend/index.html`) drives the same game over the `/play` WebSocket and renders
+streamed narration, cited sources, character portraits, scene backdrops, and live progress. Its art is
+original inline **SVG**; if you drop PNGs into `frontend/assets/portraits/<key>.png` or
+`frontend/assets/scenes/<key>.png` they are used automatically, otherwise the SVG renders.
 
 See `BUILD-PLAN.md` for the full 24-hour build plan, architecture, and demo script.
 
