@@ -36,7 +36,7 @@ jobs:
       - name: Compile smoke check
         # compileall catches syntax errors without importing modules that would
         # require Azure credentials or network access — keeps CI green offline.
-        run: python -m compileall src scripts/seed_foundry_iq.py scripts/create_foundry_iq_kbs.py
+        run: python -m compileall src conftest.py scripts/seed_foundry_iq.py scripts/create_foundry_iq_kbs.py scripts/gen_assets.py
 
       - name: Run evals (offline)
         # USE_LOCAL_FALLBACK routes curriculum/world retrieval through the local
@@ -47,11 +47,16 @@ jobs:
         run: pytest evals/ -q
 
       - name: Secret scan
-        # Scans every tracked text file for hardcoded-secret patterns. Exits
-        # non-zero only if a secret is detected, failing the build.
+        # Self-contained (the scanner harness script is gitignored, so the patterns live here) and
+        # binary-safe: `grep -I` skips binary files, so the committed web-client PNGs can't
+        # false-positive. Exits non-zero only if a hardcoded secret is detected, failing the build.
         run: |
-          status=0
+          q="\"'"
+          patterns="sk[-_][a-zA-Z0-9]{20,}|AIza[0-9A-Za-z_-]{35}|AKIA[0-9A-Z]{16}|ghp_[a-zA-Z0-9]{36}|xoxb-[0-9]+-[a-zA-Z0-9-]+|-----BEGIN (RSA|EC|OPENSSH) PRIVATE KEY|(password|secret)[$q]?[[:space:]]*[:=][[:space:]]*[$q][^$q]{8,}[$q]|token[$q]?[[:space:]]*[:=][[:space:]]*[$q][a-zA-Z0-9_.-]{20,}[$q]"
+          rc=0
           while IFS= read -r f; do
-            bash scripts/secret-scan.sh "$f" >/dev/null 2>&1 || { echo "Secret detected in $f"; status=1; }
+            if grep -IEni -- "$patterns" "$f" >/dev/null 2>&1; then
+              echo "::error::possible secret detected in $f"; rc=1
+            fi
           done < <(git ls-files)
-          exit "$status"
+          exit "$rc"
