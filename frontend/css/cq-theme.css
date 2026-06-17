@@ -1,0 +1,29 @@
+/* Theme variables and a few utility classes for Curriculum Quest */
+:root {
+  --cq-primary: #0E6A4A; /* deep green */
+  --cq-accent:  #F29E4C; /* warm orange */
+  --cq-bg:      #FFF9F2; /* warm cream */
+  --cq-surface: #FFFFFF;
+  --cq-muted:   #6B6B6B;
+  --cq-danger:  #D9534F;
+  --cq-radius:  12px;
+  --cq-animation-fast: 150ms;
+  --cq-animation-medium: 320ms;
+}
+
+/* Basic page utilities useful for the demo */
+.container { max-width:1200px; margin:0 auto; padding:16px; }
+.card { background:var(--cq-surface); border-radius:var(--cq-radius); box-shadow:0 6px 18px rgba(15,23,42,0.06); }
+
+/* Accessibility focus */
+:focus { outline: 3px solid rgba(14,106,74,0.14); outline-offset:3px; }
+
+/* Button token */
+.btn { display:inline-block; padding:8px 12px; border-radius:8px; border:0; cursor:pointer; }
+.btn-primary { background:var(--cq-primary); color:white; }
+.btn-ghost { background:transparent; color:var(--cq-primary); border:1px solid rgba(14,106,74,0.08); }
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+}
