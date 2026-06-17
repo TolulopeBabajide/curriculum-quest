@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="600" viewBox="0 0 1200 600" role="img" aria-label="Mockup scene: village with stream and market">
+  <defs>
+    <linearGradient id="sky" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="#FFF7EC"/>
+      <stop offset="100%" stop-color="#FFEFD9"/>
+    </linearGradient>
+    <style>
+      .bg { fill: url(#sky); }
+      .hill { fill: #E6F5EE; }
+      .hill2 { fill: #CFEDE0; }
+      .house { fill: #FFF6E8; stroke: #E0B37A; stroke-width:2 }
+      .roof { fill: #D77A3A }
+      .stream { fill: none; stroke: #5FB3E6; stroke-width:18; stroke-linecap:round }
+      .stall { fill: #FFD8A8; stroke:#E6A96A; }
+      .char { fill: #F9C7A8; stroke:#8B5A3C }
+      .shadow { fill: rgba(0,0,0,0.08) }
+      .fg { transform-origin: center; }
+    </style>
+  </defs>
+
+  <!-- Background sky -->
+  <rect class="bg" x="0" y="0" width="1200" height="600"/>
+
+  <!-- Far hills (layer: far) -->
+  <g id="layer-far">
+    <path class="hill" d="M0,380 C180,340 360,340 600,380 C840,420 1060,420 1200,380 L1200,600 L0,600 Z"/>
+    <path class="hill2" d="M0,420 C220,380 420,380 700,420 C980,460 1160,460 1200,440 L1200,600 L0,600 Z"/>
+  </g>
+
+  <!-- Midground: house + market (layer: mid) -->
+  <g id="layer-mid">
+    <!-- House -->
+    <g transform="translate(150,260)">
+      <rect class="house" x="0" y="60" width="160" height="100" rx="8"/>
+      <polygon class="roof" points="-10,60 80,-10 170,60"/>
+      <rect x="60" y="100" width="40" height="60" fill="#7A4B2E" rx="4"/>
+      <circle cx="30" cy="140" r="6" fill="#FFD58A"/>
+    </g>
+
+    <!-- Market stall -->
+    <g transform="translate(520,280)">
+      <rect class="stall" x="0" y="0" width="220" height="80" rx="6"/>
+      <rect x="0" y="-30" width="220" height="30" fill="#F29E4C"/>
+    </g>
+  </g>
+
+  <!-- Stream path (layer: mid-stream) -->
+  <g id="layer-mid-stream">
+    <path class="stream" d="M0,460 C150,430 300,430 420,450 C540,470 700,470 840,430 C980,390 1200,420"/>
+  </g>
+
+  <!-- Foreground characters (layer: fg) -->
+  <g id="layer-fg" class="fg">
+    <!-- Character 1 -->
+    <g transform="translate(360,420)">
+      <ellipse class="shadow" cx="0" cy="22" rx="28" ry="10"/>
+      <circle class="char" cx="0" cy="0" r="28"/>
+      <rect x="-10" y="30" width="20" height="36" rx="6" fill="#6B8E5A"/>
+    </g>
+
+    <!-- Character 2 near market -->
+    <g transform="translate(600,360)">
+      <ellipse class="shadow" cx="0" cy="22" rx="22" ry="8"/>
+      <circle class="char" cx="0" cy="0" r="22"/>
+      <rect x="-10" y="26" width="20" height="30" rx="6" fill="#5A9BD6"/>
+    </g>
+  </g>
+
+  <!-- Foreground props: log near stream -->
+  <g id="layer-props">
+    <rect x="420" y="460" width="80" height="12" rx="6" fill="#8B5A3C"/>
+  </g>
+
+  <!-- UI overlay: narration card (not interactive in SVG) -->
+  <g id="ui-overlay">
+    <rect x="720" y="380" width="420" height="160" rx="12" fill="#FFFFFF" stroke="#F0E6DF"/>
+    <text x="748" y="420" font-family="Inter, sans-serif" font-size="18" fill="#111827">Storyteller: The stream looks murky today.</text>
+    <text x="748" y="448" font-family="Inter, sans-serif" font-size="14" fill="#6B6B6B">Tap a hotspot to investigate — try clearing the gutter.</text>
+  </g>
+
+</svg>

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400" role="img" aria-label="Mockup portrait with three expressions">
+  <defs>
+    <style>
+      .bg { fill: #FFF6E8 }
+      .face { fill: #F9D6C2; stroke: #8B5A3C; }
+      .hair { fill: #4A2F24 }
+      .eye { fill: #2D2D2D }
+      .mouth { fill: transparent; stroke: #2D2D2D; stroke-width:3; stroke-linecap:round }
+      .group { transition: opacity 200ms ease; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="400" height="400" rx="24"/>
+
+  <!-- Idle expression -->
+  <g id="expr-idle" class="group" transform="translate(80,40)">
+    <circle class="face" cx="120" cy="160" r="96"/>
+    <ellipse class="hair" cx="120" cy="86" rx="88" ry="40"/>
+    <circle class="eye" cx="92" cy="150" r="8"/>
+    <circle class="eye" cx="148" cy="150" r="8"/>
+    <path class="mouth" d="M96,190 Q120,204 144,190"/>
+  </g>
+
+  <!-- Happy expression (hidden by default in app; shown as alternate state) -->
+  <g id="expr-happy" class="group" transform="translate(80,40)" opacity="0">
+    <circle class="face" cx="120" cy="160" r="96"/>
+    <ellipse class="hair" cx="120" cy="86" rx="88" ry="40"/>
+    <circle class="eye" cx="92" cy="148" r="8"/>
+    <circle class="eye" cx="148" cy="148" r="8"/>
+    <path class="mouth" d="M96,188 Q120,218 144,188" stroke-width="4"/>
+    <circle cx="170" cy="118" r="6" fill="#F29E4C" opacity="0.7"/>
+  </g>
+
+  <!-- Concerned expression -->
+  <g id="expr-concerned" class="group" transform="translate(80,40)" opacity="0">
+    <circle class="face" cx="120" cy="160" r="96"/>
+    <ellipse class="hair" cx="120" cy="86" rx="88" ry="40"/>
+    <circle class="eye" cx="92" cy="148" r="8"/>
+    <path class="eye" d="M148,146 Q156,152 148,158" fill="#2D2D2D"/>
+    <path class="mouth" d="M96,204 Q120,194 144,204" />
+  </g>
+
+  <!-- Small caption -->
+  <text x="24" y="360" font-family="Inter, sans-serif" font-size="14" fill="#6B6B6B">Portrait prototype — swap groups to show expressions</text>
+</svg>
